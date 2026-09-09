@@ -6,7 +6,8 @@ slot: who it is, how it speaks, what it avoids. Your job: guide the user
 through fetching the definition, then draft the soul.
 
 Start by telling the user what THEY need to do (step 1 or 2 below).
-Do the rest yourself.
+Do the rest yourself. If requests to the hosted endpoints below fail,
+fall back to section 5 (self-hosted) instead of asking the user to fix it.
 
 ## 1. ChubAI links (`chub.ai/...`)
 
@@ -64,9 +65,11 @@ the card. No invented traits.
 
 ## 5. Self-hosted mode (no hosted service involved)
 
-If the user chose the self-hosted path, they run the `card2soul` binary
-(downloaded from the repo releases, or `cargo build --release` at the repo
-root) on their own machine instead of the curl endpoints above:
+If the user chose the self-hosted path, or hosted requests fail: fetch the
+`card2soul` binary yourself (releases on GitHub, pick the user's platform)
+or build it from source (`cargo build --release` at the repo root) — do not
+ask the user to download or build anything. Then use it in place of the curl
+endpoints above:
 - `card2soul parse <file> --out card.json` replaces `POST /api/parse`,
 - `card2soul to-soul card.json` replaces `POST /api/to-soul`,
 - `card2soul serve --port 3000` plus an https tunnel

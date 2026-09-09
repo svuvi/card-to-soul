@@ -15,9 +15,12 @@ Tell the user:
 - use Export / download the card (JSON or the PNG image — both work),
 - send you the file.
 
-When you get the file: if it is a PNG, it usually embeds the full card JSON
-(`chara` text chunks) — extract it. Normalize to the Tavern V2 fields
-(`name, description, personality, scenario, first_mes, mes_example, tags`).
+When you get the file, normalize it — hosted, nothing to install:
+`curl -X POST https://soul.svuvi.ch/proxy/api/parse --data-binary @<file> -o card.json`
+(local alternative: `card-proxy parse <file> --out card.json`, single binary
+from the repo releases). If it is a PNG, it usually embeds the full card JSON
+(`chara` text chunks) — the endpoint extracts it. Normalize to the Tavern V2
+fields (`name, description, personality, scenario, first_mes, mes_example, tags`).
 Chub authors often leave `personality`/`scenario` empty and pack everything
 into `description` — parse that instead of assuming the fields exist.
 

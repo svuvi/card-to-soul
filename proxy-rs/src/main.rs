@@ -2,6 +2,7 @@
 //! Same behavior as `node soul.js proxy`, but a single binary with no runtime to feed.
 //! Config via args or env: --port / PORT, --dir / STORE_DIR, --ttl-hours / TTL_HOURS,
 //! --public-url / PUBLIC_URL. Any API key and model name are accepted.
+use base64::Engine as _;
 use serde_json::{json, Value};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
@@ -229,6 +230,191 @@ fn sse_capture(id: &str, link: &str) -> String {
     format!("data: {}\n\ndata: {}\n\ndata: [DONE]\n\n", head, tail)
 }
 
+// ---------- parse ----------
+
+fn is_png(buf: &[u8]) -> bool {
+    buf.len() > 8 && buf[0..8] == [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
+}
+
+// Embedded chara_card_v2 docs from PNG text chunks (tEXt/iTXt, base64).
+// Compressed zTXt is rejected — export JSON instead.
+fn extract_png_cards(buf: &[u8]) -> Result<Vec<Value>, String> {
+    let mut cards = Vec::new();
+    let mut off = 8;
+    while off + 8 <= buf.len() {
+        let len = u32::from_be_bytes([buf[off], buf[off + 1], buf[off + 2], buf[off + 3]]) as usize;
+        let typ = &buf[off + 4..off + 8];
+        if off + 12 + len > buf.len() {
+            break;
+        }
+        let chunk = &buf[off + 8..off + 8 + len];
+        if typ == b"tEXt" || typ == b"iTXt" {
+            if let Some(nul) = chunk.iter().position(|&b| b == 0) {
+                let keyword = String::from_utf8_lossy(&chunk[..nul]);
+                if keyword == "chara" {
+                    // iTXt layout: keyword \0 compFlag compMethod lang\0 translated\0 text
+                    let mut start = nul + 1;
+                    if typ == b"iTXt" {
+                        if chunk.get(nul + 1) == Some(&1) {
+                            // compressed — skip
+                            start = usize::MAX;
+                        } else {
+                            let mut p = nul + 3;
+                            for _ in 0..2 {
+                                match chunk[p..].iter().position(|&b| b == 0) {
+                                    Some(e) => p += e + 1,
+                                    None => {
+                                        p = usize::MAX;
+                                        break;
+                                    }
+                                }
+                            }
+                            start = p;
+                        }
+                    }
+                    if start != usize::MAX && start <= chunk.len() {
+                        let text = String::from_utf8_lossy(&chunk[start..]).trim().to_string();
+                        let engine = base64::engine::general_purpose::STANDARD;
+                        match engine
+                            .decode(text.as_bytes())
+                            .map_err(|e| e.to_string())
+                            .and_then(|raw| {
+                                serde_json::from_slice::<Value>(&raw).map_err(|e| e.to_string())
+                            }) {
+                            Ok(v) => cards.push(v),
+                            Err(e) => eprintln!("warn: skipping unreadable chara chunk ({})", e),
+                        }
+                    }
+                }
+            }
+        } else if typ == b"zTXt" {
+            eprintln!("warn: zTXt chara chunk skipped (export JSON instead)");
+        }
+        if typ == b"IEND" {
+            break;
+        }
+        off += 12 + len;
+    }
+    Ok(cards)
+}
+
+fn str_field(d: &Value, k: &str) -> String {
+    d.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string()
+}
+
+// Flatten a Tavern V2 card (or {data,...} wrapper) into card.json.
+fn normalize_card(raw: &Value) -> Value {
+    let d = raw.get("data").unwrap_or(raw);
+    json!({
+        "spec": raw.get("spec").and_then(|s| s.as_str()).unwrap_or("chara_card_v2"),
+        "name": d.get("name").and_then(|s| s.as_str()).unwrap_or("Unknown"),
+        "description": str_field(d, "description"),
+        "personality": str_field(d, "personality"),
+        "scenario": str_field(d, "scenario"),
+        "first_mes": str_field(d, "first_mes"),
+        "mes_example": str_field(d, "mes_example"),
+        "system_prompt": str_field(d, "system_prompt"),
+        "tags": d.get("tags").cloned().unwrap_or(json!([])),
+        "creator": d.get("creator").and_then(|s| s.as_str()).unwrap_or(""),
+        "avatar": d.get("avatar").and_then(|s| s.as_str()).unwrap_or(""),
+        "alternate_greetings": d.get("alternate_greetings").cloned().unwrap_or(json!([])),
+        "character_book": d.get("character_book").cloned().unwrap_or(Value::Null),
+        "extensions": d.get("extensions").cloned().unwrap_or(json!({})),
+    })
+}
+
+fn card_summary(card: &Value) -> Value {
+    let len = |k: &str| {
+        card.get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| s.len())
+            .unwrap_or(0)
+    };
+    json!({
+        "name": card.get("name"),
+        "description_len": len("description"),
+        "personality_len": len("personality"),
+        "scenario_len": len("scenario"),
+        "first_mes_len": len("first_mes"),
+        "mes_example_len": len("mes_example"),
+        "tags": card.get("tags"),
+        "creator": card.get("creator"),
+        "has_lorebook": !card.get("character_book").map(|v| v.is_null()).unwrap_or(true),
+    })
+}
+
+// ---------- to-soul ----------
+
+// Near-verbatim transform: card text carried over as-is, third person kept,
+// only {{char}}/{{user}} macros resolved and image lines stripped.
+// Editorial judgment belongs to the agent, not to this command.
+fn resolve_macros(s: &str, name: &str) -> String {
+    s.replace("{{char}}", name).replace("{{user}}", "you")
+}
+
+fn strip_image_lines(s: &str) -> String {
+    s.lines()
+        .filter(|l| {
+            let t = l.trim();
+            !(t.starts_with("![") && t.contains("](") && t.ends_with(')'))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn to_soul(card: &Value) -> String {
+    let name = card
+        .get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("Unknown");
+    let get = |k: &str| {
+        card.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
+    let mut parts: Vec<String> = vec![format!("# Identity\n\nYou are {}.", name)];
+    let desc = get("description");
+    if !desc.is_empty() {
+        parts.push(resolve_macros(&desc, name));
+    }
+    let pers = get("personality");
+    if !pers.is_empty() {
+        parts.push(resolve_macros(&pers, name));
+    }
+    let sc = get("scenario");
+    if !sc.is_empty() {
+        parts.push(format!("# Scenario\n{}", resolve_macros(&sc, name)));
+    }
+    let fm = strip_image_lines(&resolve_macros(&get("first_mes"), name));
+    if !fm.is_empty() {
+        parts.push(format!("# How {} talks (verbatim sample)\n{}", name, fm));
+    }
+    let me = get("mes_example");
+    if !me.is_empty() {
+        parts.push(format!(
+            "# Dialogue examples (verbatim)\n{}",
+            resolve_macros(&me, name)
+        ));
+    }
+    parts.join("\n\n") + "\n"
+}
+
+fn read_body(req: &mut tiny_http::Request, cap: u64) -> Option<Vec<u8>> {
+    let mut raw = Vec::new();
+    req.as_reader().take(cap).read_to_end(&mut raw).ok()?;
+    Some(raw)
+}
+
+fn is_png_body(req: &tiny_http::Request, raw: &[u8]) -> bool {
+    req.headers().iter().any(|h| {
+        h.field.to_string().eq_ignore_ascii_case("Content-Type")
+            && h.value.as_str().to_ascii_lowercase().contains("png")
+    }) || is_png(raw)
+}
 fn serve(cfg: &Config) {
     fs::create_dir_all(&cfg.dir).expect("cannot create store dir");
     sweep(&cfg.dir, cfg.ttl_secs);
@@ -362,6 +548,67 @@ fn serve(cfg: &Config) {
             })));
             continue;
         }
+        if method == "POST" && url == "/api/parse" {
+            let raw = match read_body(&mut req, 25 * 1024 * 1024) {
+                Some(b) => b,
+                None => {
+                    let _ = req.respond(json_resp(400, &json!({"error":"unreadable body"})));
+                    continue;
+                }
+            };
+            let parsed: Result<Value, String> = if is_png_body(&req, &raw) {
+                match extract_png_cards(&raw) {
+                    Ok(cards) if cards.is_empty() => {
+                        Err("no embedded chara data found in PNG".to_string())
+                    }
+                    Ok(cards) => {
+                        if cards.len() > 1 {
+                            eprintln!("note: PNG holds {} cards, using [0]", cards.len());
+                        }
+                        Ok(cards.into_iter().next().unwrap())
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                serde_json::from_slice(&raw).map_err(|e| e.to_string())
+            };
+            match parsed {
+                Ok(raw_card) => {
+                    let _ = req.respond(json_resp(200, &normalize_card(&raw_card)));
+                }
+                Err(e) => {
+                    let _ = req.respond(json_resp(400, &json!({"error": e})));
+                }
+            }
+            continue;
+        }
+        if method == "POST" && url == "/api/to-soul" {
+            let raw = match read_body(&mut req, 25 * 1024 * 1024) {
+                Some(b) => b,
+                None => {
+                    let _ = req.respond(json_resp(400, &json!({"error":"unreadable body"})));
+                    continue;
+                }
+            };
+            match serde_json::from_slice::<Value>(&raw) {
+                Ok(raw_card) => {
+                    let _ = req.respond(cors(
+                        tiny_http::Response::from_string(to_soul(&normalize_card(&raw_card)))
+                            .with_header(
+                                tiny_http::Header::from_bytes(
+                                    "Content-Type",
+                                    "text/markdown; charset=utf-8",
+                                )
+                                .unwrap(),
+                            ),
+                    ));
+                }
+                Err(e) => {
+                    let _ = req.respond(json_resp(400, &json!({"error": e.to_string()})));
+                }
+            }
+            continue;
+        }
         let _ = req.respond(json_resp(404, &json!({"error":"not found"})));
     }
 }
@@ -375,8 +622,133 @@ fn chrono_now() -> String {
     format!("{}s-since-epoch", s)
 }
 
+fn print_help() {
+    println!(
+        "card-proxy — RP character cards -> SOUL.md\n\
+         usage:\n  \
+         card-proxy [proxy] [--port 3000] [--dir ./store] [--ttl-hours 72] [--public-url https://host]\n  \
+         card-proxy parse <card.json|card.png> [--out card.json] [--index N]\n  \
+         card-proxy to-soul <card.json> [--out SOUL.md]\n\
+         api (same binary in server mode):\n  \
+         POST /v1/chat/completions  definition catcher (proxy mode)\n  \
+         GET  /r/<id>                captured definition\n  \
+         POST /api/parse             card.json or card.png -> normalized card.json\n  \
+         POST /api/to-soul           card.json -> soul.md draft (text/markdown)"
+    );
+}
+
+fn opt_after(args: &[String], name: &str) -> Option<String> {
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1).cloned())
+}
+
+fn cmd_parse(argv: &[String]) {
+    let input = argv.get(2).unwrap_or_else(|| {
+        eprintln!("usage: card-proxy parse <card.json|card.png> [--out card.json] [--index N]");
+        std::process::exit(1);
+    });
+    let out = opt_after(argv, "--out");
+    let idx: usize = opt_after(argv, "--index")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let buf = fs::read(input).unwrap_or_else(|_| {
+        eprintln!("error: file not found: {}", input);
+        std::process::exit(1);
+    });
+    let raw: Value = if is_png(&buf) {
+        match extract_png_cards(&buf) {
+            Ok(cards) if cards.is_empty() => {
+                eprintln!("error: no embedded chara data found in PNG");
+                std::process::exit(1);
+            }
+            Ok(cards) => {
+                if cards.len() > 1 && opt_after(argv, "--index").is_none() {
+                    eprintln!(
+                        "note: PNG holds {} cards, using [0] (pass --index N)",
+                        cards.len()
+                    );
+                }
+                cards.into_iter().nth(idx).unwrap_or_else(|| {
+                    eprintln!("error: no card at index {}", idx);
+                    std::process::exit(1);
+                })
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        serde_json::from_slice(&buf).unwrap_or_else(|e| {
+            eprintln!("error: bad JSON: {}", e);
+            std::process::exit(1);
+        })
+    };
+    let card = normalize_card(&raw);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&card_summary(&card)).unwrap()
+    );
+    if let Some(o) = out {
+        fs::write(&o, serde_json::to_string_pretty(&card).unwrap()).unwrap();
+        println!("wrote {}", o);
+    }
+}
+
+fn cmd_to_soul(argv: &[String]) {
+    let input = argv.get(2).unwrap_or_else(|| {
+        eprintln!("usage: card-proxy to-soul <card.json> [--out SOUL.md]");
+        std::process::exit(1);
+    });
+    let out = opt_after(argv, "--out");
+    let buf = fs::read(input).unwrap_or_else(|_| {
+        eprintln!("error: file not found: {}", input);
+        std::process::exit(1);
+    });
+    let raw: Value = serde_json::from_slice(&buf).unwrap_or_else(|e| {
+        eprintln!("error: bad JSON: {}", e);
+        std::process::exit(1);
+    });
+    let card = normalize_card(&raw);
+    let soul = to_soul(&card);
+    match out {
+        Some(o) => {
+            fs::write(&o, &soul).unwrap();
+            println!("wrote {} ({} chars)", o, soul.len());
+        }
+        None => print!("{}", soul),
+    }
+    if card
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .is_empty()
+        && card
+            .get("personality")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+    {
+        eprintln!("note: card has no description/personality — nothing to transfer");
+    }
+}
+
 fn main() {
-    serve(&load_config());
+    let argv: Vec<String> = std::env::args().collect();
+    match argv.get(1).map(|s| s.as_str()) {
+        Some("parse") => cmd_parse(&argv),
+        Some("to-soul") => cmd_to_soul(&argv),
+        Some("proxy") | None => serve(&load_config()),
+        Some(h) if h == "help" || h == "-h" || h == "--help" => print_help(),
+        Some(other) => {
+            eprintln!("unknown command: {}\n", other);
+            print_help();
+            std::process::exit(1);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -398,6 +770,62 @@ mod tests {
         assert!(characters_of(&msgs).is_empty());
     }
 
+    #[test]
+    fn parse_and_soul_helpers() {
+        let raw = json!({"data": {
+            "name": "Vivi",
+            "description": "{{char}} is shy. Likes {{user}} quietly.",
+            "first_mes": "![](http://x/y.png)\n\"h-hi,\" Vivi stutters.",
+        }});
+        let card = normalize_card(&raw);
+        assert_eq!(card["name"], json!("Vivi"));
+        let soul = to_soul(&card);
+        assert!(soul.contains("You are Vivi."));
+        assert!(soul.contains("Vivi is shy. Likes you quietly."));
+        assert!(!soul.contains("{{char}}"));
+        assert!(!soul.contains("![](http://x/y.png)"));
+        assert!(soul.contains("# How Vivi talks (verbatim sample)"));
+    }
+
+    #[test]
+    fn png_extract_round_trip() {
+        // minimal PNG: sig + IHDR + tEXt(chara=base64 card) + IEND, valid CRCs
+        fn crc(data: &[u8]) -> u32 {
+            let mut c = 0xFFFF_FFFFu32;
+            for b in data {
+                c ^= *b as u32;
+                for _ in 0..8 {
+                    c = if c & 1 == 1 {
+                        0xEDB8_8320 ^ (c >> 1)
+                    } else {
+                        c >> 1
+                    };
+                }
+            }
+            !c
+        }
+        fn chunk(typ: &[u8; 4], data: &[u8], out: &mut Vec<u8>) {
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(typ);
+            out.extend_from_slice(data);
+            let mut c = typ.to_vec();
+            c.extend_from_slice(data);
+            out.extend_from_slice(&crc(&c).to_be_bytes());
+        }
+        let card =
+            json!({"spec": "chara_card_v2", "data": {"name": "Mia", "description": "lively"}});
+        let engine = base64::engine::general_purpose::STANDARD;
+        let mut text = b"chara\0".to_vec();
+        text.extend_from_slice(engine.encode(serde_json::to_vec(&card).unwrap()).as_bytes());
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        chunk(b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0], &mut png);
+        chunk(b"tEXt", &text, &mut png);
+        chunk(b"IEND", &[], &mut png);
+        assert!(is_png(&png));
+        let cards = extract_png_cards(&png).unwrap();
+        assert_eq!(cards.len(), 1);
+        assert_eq!(normalize_card(&cards[0])["name"], json!("Mia"));
+    }
     #[test]
     fn sse_body_shape() {
         let b = sse_capture("abc123", "http://x/r/abc123");

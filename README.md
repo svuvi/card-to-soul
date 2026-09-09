@@ -4,53 +4,49 @@ Turn RP character cards (ChubAI, JanitorAI) into SOUL.md personas for agents
 (Hermes and others). Near-verbatim transfer: the character's own words carry
 over, no generic-guideline summaries.
 
-No fetching from the CLI: both sites block datacenter IPs, so the user exports
-(Chub) or captures via proxy (Janitor) in their own browser. This repo holds
-the parser, the proxy, and the agent skill — nothing more.
+Two ways to use it. Recommended: the hosted API — plain curl, nothing to
+install. Alternative: run the single binary locally, no requests leave
+your machine.
 
-## Install
-
-Zero dependencies, Node 18+. Clone and run:
+## Recommended: hosted API (`https://soul.svuvi.ch/proxy`)
 
 ```bash
-node soul.js help
+# ChubAI card (JSON export or PNG image) -> normalized card.json
+curl -X POST https://soul.svuvi.ch/proxy/api/parse \
+  --data-binary @card.png -o card.json
+
+# card.json -> SOUL.md draft
+curl -X POST https://soul.svuvi.ch/proxy/api/to-soul \
+  --data-binary @card.json -o SOUL.md
 ```
 
-## Usage
+Hidden JanitorAI definitions go through the proxy catcher: point the
+character chat at `https://soul.svuvi.ch/proxy/v1/chat/completions` as a
+custom OpenAI endpoint (any model name and key), send one message, open the
+returned `…/r/<id>` link. See `SKILL.md` / the site for the full flow.
+
+## Local: single binary, no server involved
+
+Download `card-proxy-<platform>` from
+[releases](https://github.com/svuvi/card-to-soul/releases), then:
 
 ```bash
-# Normalize a card (JSON export or PNG with embedded chara data)
-node soul.js parse mia.json --out card.json
-node soul.js parse vivi.png --out card.json
-
-# Draft a soul (near-verbatim, third person; adapt by hand after)
-node soul.js to-soul card.json --out SOUL.md
-
-# Catch a hidden JanitorAI definition
-node soul.js proxy --port 3000 --public-url https://your-host
-# point the character chat at <public-url>/v1/chat/completions as a custom
-# OpenAI endpoint (any model name and key, e.g. model `x`, key `x`), send "hi",
-# open the returned /r/<id> link, save it, run to-soul on it.
+card-proxy parse <card.json|card.png> --out card.json
+card-proxy to-soul card.json --out SOUL.md
+# one-off catcher instead of the hosted proxy:
+card-proxy proxy --port 3000   # + an https tunnel for JanitorAI to reach
 ```
 
-See `SKILL.md` for the full agent workflow (per-site instructions,
-multi-character disambiguation, token tradeoff, sensitive content).
+Build from source: `cd proxy-rs && cargo build --release` (Rust 1.70+).
 
 ## Layout
 
-- `soul.js` — `parse` | `proxy` | `to-soul` (Node stdlib only, for one-off runs)
-- `proxy-rs/` — same proxy as a standalone Rust binary (~2.6 MB RAM, for hosting)
+- `proxy-rs/` — the whole tool: `parse` | `to-soul` | `proxy` server
+  (`/v1/*` catcher, `/r/<id>`, `/api/parse`, `/api/to-soul`)
 - `SKILL.md` — instructions for agents doing the conversion
 - `site/` — static page + agent instruction file (served at soul.svuvi.ch)
-- `deploy/` — Caddy snippet + systemd unit for the hosted proxy
-- `store/` — proxy captures (gitignored, TTL-expire)
-
-## Hosted proxy
-
-```bash
-cd proxy-rs && cargo build --release
-# runs on :3131 via systemd, see deploy/
-```
+- `deploy/` — Caddy snippet + systemd unit for the hosted instance
+- `store/` — local proxy captures (gitignored, TTL-expire)
 
 ## License
 

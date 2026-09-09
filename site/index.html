@@ -7,12 +7,16 @@
 <style>
   :root { color-scheme: dark; }
   body { background: #111; color: #e8e8e8; font: 17px/1.6 system-ui, sans-serif;
-         max-width: 640px; margin: 12vh auto; padding: 0 20px; }
+         max-width: 680px; margin: 10vh auto; padding: 0 20px; }
   h1 { font-size: 28px; margin-bottom: 8px; }
-  p { color: #aaa; }
-  code { background: #222; padding: 2px 6px; border-radius: 4px; font-size: 15px; }
+  h2 { font-size: 19px; margin-top: 28px; }
+  p, li { color: #aaa; }
+  li { margin-bottom: 6px; }
+  code { background: #222; padding: 2px 6px; border-radius: 4px; font-size: 14px;
+         word-break: break-all; }
   pre { background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
         padding: 14px; white-space: pre-wrap; font-size: 14px; }
+  pre.cmd { white-space: pre; overflow-x: auto; }
   button { background: #e8e8e8; color: #111; border: 0; border-radius: 8px;
            font-size: 16px; padding: 10px 22px; cursor: pointer; margin-top: 12px; }
   button:active { transform: translateY(1px); }
@@ -29,6 +33,26 @@ carry over, not generic summaries. Open source:
 <p>Paste this into your agent:</p>
 <pre id="prompt">Help me make a new soul.md from an RP character definition — read https://soul.svuvi.ch/instruction.md and tell me what I need to do on my side first.</pre>
 <button id="copy">Copy prompt</button><span id="ok">copied ✓</span>
+
+<h2>Recommended: hosted API, nothing to install</h2>
+<ul>
+<li>ChubAI card (JSON export or PNG) → normalized card:
+<pre class="cmd">curl -X POST https://soul.svuvi.ch/proxy/api/parse --data-binary @card.png -o card.json</pre></li>
+<li>Card → soul draft:
+<pre class="cmd">curl -X POST https://soul.svuvi.ch/proxy/api/to-soul --data-binary @card.json</pre></li>
+<li>Hidden JanitorAI definition: point the character chat at
+<code>https://soul.svuvi.ch/proxy/v1/chat/completions</code> as a custom
+OpenAI endpoint (any model/key), send one message, paste the returned
+<code>/r/&lt;id&gt;</code> link to your agent.</li>
+</ul>
+
+<h2>Local: single binary, nothing leaves your machine</h2>
+<p>Download <code>card-proxy</code> from
+<a href="https://github.com/svuvi/card-to-soul/releases">releases</a>:</p>
+<pre class="cmd">card-proxy parse card.png --out card.json
+card-proxy to-soul card.json
+card-proxy proxy --port 3000   # one-off catcher (+ https tunnel)</pre>
+
 <script>
 document.getElementById('copy').onclick = async () => {
   await navigator.clipboard.writeText(document.getElementById('prompt').innerText);

@@ -15,7 +15,14 @@ metadata:
 
 Turn an RP character card (ChubAI, JanitorAI) into a SOUL.md persona.
 Transfer is near-verbatim: carry the card's text over, do not summarize it
-into generic guidelines. The tool does mechanics; judgment is yours.
+into generic guidelines. The service does mechanics; judgment is yours.
+
+You need nothing installed: the hosted API at `https://soul.svuvi.ch/proxy`
+covers parse, draft, and capture via plain curl. If the user prefers that no
+data leaves their machine, the same tool runs locally as a single binary
+(`card-proxy`, downloadable from the repo releases, or `cargo build --release`
+in `proxy-rs/`): `card-proxy parse …`, `card-proxy to-soul …`,
+`card-proxy proxy …`. Prefer the hosted API unless the user asks for local.
 
 ## Workflow
 
@@ -32,15 +39,16 @@ Tell the user:
 - open the character page in their own browser,
 - use Export / download the card (JSON or the PNG image — both work),
 - send you the file.
-Then: `node soul.js parse <file> --out card.json`
-(PNG files often embed the full card JSON in `chara` text chunks.)
+Then: normalize it into `card.json` — hosted:
+`curl -X POST https://soul.svuvi.ch/proxy/api/parse --data-binary @<file> -o card.json`
+(local alternative: `card-proxy parse <file> --out card.json`).
+PNG files often embed the full card JSON in `chara` text chunks.
 
 ### JanitorAI
 Public pages show lore text only; hidden definitions never appear on the page.
-If the definition is visible, the user can paste it. Otherwise use the proxy:
-- run `node soul.js proxy --port 3000 --public-url <reachable-base-url>`
-  (local run needs an https tunnel, e.g. `cloudflared tunnel --url http://localhost:3000`;
-  the repo can also be hosted so users point JanitorAI at a shared instance),
+If the definition is visible, the user can paste it. Otherwise use the proxy
+catcher (hosted — nothing to run; a local `card-proxy proxy` works the same
+with an https tunnel, e.g. `cloudflared tunnel --url http://localhost:3000`):
 - tell the user: open the character chat, switch the API to proxy/custom,
   endpoint `<base-url>/v1/chat/completions`, any model and key (e.g. `x` / `x`),
   save, send one message like "hi",
@@ -60,7 +68,10 @@ Never pick silently.
 
 ## Drafting SOUL.md
 
-- Base: `node soul.js to-soul card.json` (macros resolved, scaffolding stripped).
+- Base draft, hosted:
+  `curl -X POST https://soul.svuvi.ch/proxy/api/to-soul --data-binary @card.json`
+  (local alternative: `card-proxy to-soul card.json`). Macros resolved,
+  scaffolding stripped.
 - Adapt by hand from there: third person, drop the pronoun/subject where the
   context is clear. Keep specifics — name, age, looks, habits, backstory,
   speech patterns, contradictions. A soul full of specifics beats a soul full

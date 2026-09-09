@@ -67,7 +67,10 @@ every kept paragraph rides along in every session (context bloat, tokens,
 a more rigid agent). If the user wants the scene in, it goes in.
 
 After drafting, re-read the soul and verify each paragraph traces back to
-the card. No invented traits.
+the card. No invented traits. The soul file ends at persona content: no
+`Notes`, source credits, or change-log sections — excluded material,
+confirmations, and tradeoff talk live in the chat reply, never in the file
+that ships into every session.
 
 ## 5. Self-hosted mode (no hosted service involved)
 

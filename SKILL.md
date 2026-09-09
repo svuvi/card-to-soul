@@ -20,9 +20,9 @@ into generic guidelines. The service does mechanics; judgment is yours.
 You need nothing installed: the hosted API at `https://soul.svuvi.ch/proxy`
 covers parse, draft, and capture via plain curl. If the user prefers that no
 data leaves their machine, the same tool runs locally as a single binary
-(`card-proxy`, downloadable from the repo releases, or `cargo build --release`
-in `proxy-rs/`): `card-proxy parse …`, `card-proxy to-soul …`,
-`card-proxy proxy …`. Prefer the hosted API unless the user asks for local.
+(`card2soul`, downloadable from the repo releases, or `cargo build --release`
+at the repo root): `card2soul parse …`, `card2soul to-soul …`,
+`card2soul serve …`. Prefer the hosted API unless the user asks for local.
 
 ## Workflow
 
@@ -41,13 +41,13 @@ Tell the user:
 - send you the file.
 Then: normalize it into `card.json` — hosted:
 `curl -X POST https://soul.svuvi.ch/proxy/api/parse --data-binary @<file> -o card.json`
-(local alternative: `card-proxy parse <file> --out card.json`).
+(local alternative: `card2soul parse <file> --out card.json`).
 PNG files often embed the full card JSON in `chara` text chunks.
 
 ### JanitorAI
 Public pages show lore text only; hidden definitions never appear on the page.
 If the definition is visible, the user can paste it. Otherwise use the proxy
-catcher (hosted — nothing to run; a local `card-proxy proxy` works the same
+catcher (hosted — nothing to run; a local `card2soul serve` works the same
 with an https tunnel, e.g. `cloudflared tunnel --url http://localhost:3000`):
 - tell the user: open the character chat, switch the API to proxy/custom,
   endpoint `<base-url>/v1/chat/completions`, any model and key (e.g. `x` / `x`),
@@ -70,7 +70,7 @@ Never pick silently.
 
 - Base draft, hosted:
   `curl -X POST https://soul.svuvi.ch/proxy/api/to-soul --data-binary @card.json`
-  (local alternative: `card-proxy to-soul card.json`). Macros resolved,
+  (local alternative: `card2soul to-soul card.json`). Macros resolved,
   scaffolding stripped.
 - Adapt by hand from there: third person, drop the pronoun/subject where the
   context is clear. Keep specifics — name, age, looks, habits, backstory,

@@ -1,5 +1,5 @@
-//! card-proxy — standalone OpenAI-compatible catcher for hidden JanitorAI definitions.
-//! Same behavior as `node soul.js proxy`, but a single binary with no runtime to feed.
+//! card2soul — standalone tool turning RP character cards into SOUL.md personas:
+//! `parse` and `to-soul` run locally, `serve` runs the definition-catcher API.
 //! Config via args or env: --port / PORT, --dir / STORE_DIR, --ttl-hours / TTL_HOURS,
 //! --public-url / PUBLIC_URL. Any API key and model name are accepted.
 use base64::Engine as _;
@@ -624,11 +624,11 @@ fn chrono_now() -> String {
 
 fn print_help() {
     println!(
-        "card-proxy — RP character cards -> SOUL.md\n\
+        "card2soul — RP character cards -> SOUL.md\n\
          usage:\n  \
-         card-proxy [proxy] [--port 3000] [--dir ./store] [--ttl-hours 72] [--public-url https://host]\n  \
-         card-proxy parse <card.json|card.png> [--out card.json] [--index N]\n  \
-         card-proxy to-soul <card.json> [--out SOUL.md]\n\
+         card2soul [serve] [--port 3000] [--dir ./store] [--ttl-hours 72] [--public-url https://host]\n  \
+         card2soul parse <card.json|card.png> [--out card.json] [--index N]\n  \
+         card2soul to-soul <card.json> [--out SOUL.md]\n\
          api (same binary in server mode):\n  \
          POST /v1/chat/completions  definition catcher (proxy mode)\n  \
          GET  /r/<id>                captured definition\n  \
@@ -645,7 +645,7 @@ fn opt_after(args: &[String], name: &str) -> Option<String> {
 
 fn cmd_parse(argv: &[String]) {
     let input = argv.get(2).unwrap_or_else(|| {
-        eprintln!("usage: card-proxy parse <card.json|card.png> [--out card.json] [--index N]");
+        eprintln!("usage: card2soul parse <card.json|card.png> [--out card.json] [--index N]");
         std::process::exit(1);
     });
     let out = opt_after(argv, "--out");
@@ -698,7 +698,7 @@ fn cmd_parse(argv: &[String]) {
 
 fn cmd_to_soul(argv: &[String]) {
     let input = argv.get(2).unwrap_or_else(|| {
-        eprintln!("usage: card-proxy to-soul <card.json> [--out SOUL.md]");
+        eprintln!("usage: card2soul to-soul <card.json> [--out SOUL.md]");
         std::process::exit(1);
     });
     let out = opt_after(argv, "--out");
@@ -741,7 +741,7 @@ fn main() {
     match argv.get(1).map(|s| s.as_str()) {
         Some("parse") => cmd_parse(&argv),
         Some("to-soul") => cmd_to_soul(&argv),
-        Some("proxy") | None => serve(&load_config()),
+        Some("serve") | None => serve(&load_config()),
         Some(h) if h == "help" || h == "-h" || h == "--help" => print_help(),
         Some(other) => {
             eprintln!("unknown command: {}\n", other);

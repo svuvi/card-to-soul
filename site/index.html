@@ -20,8 +20,10 @@
   button { background: #e8e8e8; color: #111; border: 0; border-radius: 8px;
            font-size: 16px; padding: 10px 22px; cursor: pointer; margin-top: 12px; }
   button:active { transform: translateY(1px); }
-  #ok { color: #7d7; margin-left: 10px; visibility: hidden; }
+  .ok { color: #7d7; margin-left: 10px; visibility: hidden; }
   a { color: #8af; }
+  footer { margin-top: 40px; border-top: 1px solid #333; padding-top: 12px;
+           font-size: 15px; color: #888; }
 </style>
 </head>
 <body>
@@ -30,13 +32,18 @@
 persona for your agent. Near-verbatim transfer — the character's own words
 carry over, not generic summaries. Open source:
 <a href="https://github.com/svuvi/card-to-soul">github.com/svuvi/card-to-soul</a>.</p>
-<p>Paste this into your agent:</p>
-<pre id="prompt">Help me make a new soul.md from an RP character definition — read https://soul.svuvi.ch/instruction.md and tell me what I need to do on my side first.</pre>
-<button id="copy">Copy prompt</button><span id="ok">copied ✓</span>
 
-<h2>Recommended: hosted API, nothing to install</h2>
+<h2>Option A — hosted (recommended): paste this into your agent</h2>
+<pre id="prompt-hosted">Help me make a new soul.md from an RP character definition — read https://soul.svuvi.ch/instruction.md and tell me what I need to do on my side first. If soul.svuvi.ch is unreachable, fetch the same instruction from https://github.com/svuvi/card-to-soul/blob/main/site/instruction.md instead.</pre>
+<button id="copy-hosted">Copy hosted prompt</button><span class="ok" id="ok-hosted">copied ✓</span>
+
+<h2>Option B — self-hosted: paste this into your agent</h2>
+<pre id="prompt-local">Help me make a new soul.md from an RP character definition without using any hosted service — I downloaded the card2soul binary from https://github.com/svuvi/card-to-soul/releases. Read the self-hosted section of https://github.com/svuvi/card-to-soul/blob/main/site/instruction.md and tell me what I need to do on my side first.</pre>
+<button id="copy-local">Copy self-host prompt</button><span class="ok" id="ok-local">copied ✓</span>
+
+<h2>Reference</h2>
 <ul>
-<li>ChubAI card (JSON export or PNG) → normalized card:
+<li>ChubAI card → normalized card:
 <pre class="cmd">curl -X POST https://soul.svuvi.ch/proxy/api/parse --data-binary @card.png -o card.json</pre></li>
 <li>Card → soul draft:
 <pre class="cmd">curl -X POST https://soul.svuvi.ch/proxy/api/to-soul --data-binary @card.json</pre></li>
@@ -44,21 +51,25 @@ carry over, not generic summaries. Open source:
 <code>https://soul.svuvi.ch/proxy/v1/chat/completions</code> as a custom
 OpenAI endpoint (any model/key), send one message, paste the returned
 <code>/r/&lt;id&gt;</code> link to your agent.</li>
+<li>Fully local: same steps with the <code>card2soul</code> binary
+(<code>parse</code>, <code>to-soul</code>, <code>serve --port 3000</code>).</li>
 </ul>
 
-<h2>Local: single binary, nothing leaves your machine</h2>
-<p>Download <code>card-proxy</code> from
-<a href="https://github.com/svuvi/card-to-soul/releases">releases</a>:</p>
-<pre class="cmd">card-proxy parse card.png --out card.json
-card-proxy to-soul card.json
-card-proxy proxy --port 3000   # one-off catcher (+ https tunnel)</pre>
+<footer>
+Agent skill: <a href="https://github.com/svuvi/card-to-soul/blob/main/SKILL.md">SKILL.md</a>
+(<a href="https://raw.githubusercontent.com/svuvi/card-to-soul/main/SKILL.md">download raw</a>)
+— drop it into your agent's skills folder for the full workflow.
+</footer>
 
 <script>
-document.getElementById('copy').onclick = async () => {
-  await navigator.clipboard.writeText(document.getElementById('prompt').innerText);
-  document.getElementById('ok').style.visibility = 'visible';
-  setTimeout(() => document.getElementById('ok').style.visibility = 'hidden', 2000);
-};
+for (const name of ['hosted', 'local']) {
+  document.getElementById('copy-' + name).onclick = async () => {
+    await navigator.clipboard.writeText(document.getElementById('prompt-' + name).innerText);
+    const ok = document.getElementById('ok-' + name);
+    ok.style.visibility = 'visible';
+    setTimeout(() => ok.style.visibility = 'hidden', 2000);
+  };
+}
 </script>
 </body>
 </html>

@@ -27,21 +27,21 @@ returned `…/r/<id>` link. See `SKILL.md` / the site for the full flow.
 
 ## Local: single binary, no server involved
 
-Download `card-proxy-<platform>` from
+Download `card2soul-<platform>` from
 [releases](https://github.com/svuvi/card-to-soul/releases), then:
 
 ```bash
-card-proxy parse <card.json|card.png> --out card.json
-card-proxy to-soul card.json --out SOUL.md
+card2soul parse <card.json|card.png> --out card.json
+card2soul to-soul card.json --out SOUL.md
 # one-off catcher instead of the hosted proxy:
-card-proxy proxy --port 3000   # + an https tunnel for JanitorAI to reach
+card2soul serve --port 3000   # + an https tunnel for JanitorAI to reach
 ```
 
-Build from source: `cd proxy-rs && cargo build --release` (Rust 1.70+).
+Build from source: `cargo build --release` (Rust 1.70+).
 
 ## Layout
 
-- `proxy-rs/` — the whole tool: `parse` | `to-soul` | `proxy` server
+- `src/` — the whole tool: `parse` | `to-soul` | `serve` server
   (`/v1/*` catcher, `/r/<id>`, `/api/parse`, `/api/to-soul`)
 - `SKILL.md` — instructions for agents doing the conversion
 - `site/` — static page + agent instruction file (served at soul.svuvi.ch)

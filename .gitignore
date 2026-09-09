@@ -1,4 +1,4 @@
 store/
 node_modules/
 *.log
-proxy-rs/target/
+target/

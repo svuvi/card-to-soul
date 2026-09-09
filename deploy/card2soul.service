@@ -1,12 +1,12 @@
 [Unit]
-Description=card-to-soul definition proxy
+Description=card2soul definition proxy
 After=network.target
 
 [Service]
 Type=simple
 User=clawdich
-WorkingDirectory=/home/clawdich/projects/card-to-soul/proxy-rs
-ExecStart=/home/clawdich/projects/card-to-soul/proxy-rs/target/release/card-proxy
+WorkingDirectory=/home/clawdich/projects/card-to-soul
+ExecStart=/home/clawdich/projects/card-to-soul/target/release/card2soul
 Environment=PORT=3131
 Environment=STORE_DIR=/var/lib/card-proxy
 Environment=PUBLIC_URL=https://soul.svuvi.ch/proxy

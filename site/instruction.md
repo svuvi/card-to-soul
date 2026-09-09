@@ -17,7 +17,7 @@ Tell the user:
 
 When you get the file, normalize it — hosted, nothing to install:
 `curl -X POST https://soul.svuvi.ch/proxy/api/parse --data-binary @<file> -o card.json`
-(local alternative: `card-proxy parse <file> --out card.json`, single binary
+(local alternative: `card2soul parse <file> --out card.json`, single binary
 from the repo releases). If it is a PNG, it usually embeds the full card JSON
 (`chara` text chunks) — the endpoint extracts it. Normalize to the Tavern V2
 fields (`name, description, personality, scenario, first_mes, mes_example, tags`).
@@ -62,7 +62,20 @@ a more rigid agent). If the user wants the scene in, it goes in.
 After drafting, re-read the soul and verify each paragraph traces back to
 the card. No invented traits.
 
-## 5. Sensitive content
+## 5. Self-hosted mode (no hosted service involved)
+
+If the user chose the self-hosted path, they run the `card2soul` binary
+(downloaded from the repo releases, or `cargo build --release` at the repo
+root) on their own machine instead of the curl endpoints above:
+- `card2soul parse <file> --out card.json` replaces `POST /api/parse`,
+- `card2soul to-soul card.json` replaces `POST /api/to-soul`,
+- `card2soul serve --port 3000` plus an https tunnel
+  (e.g. `cloudflared tunnel --url http://localhost:3000`) replaces the
+  hosted proxy URL — the user puts the tunnel URL into JanitorAI instead.
+The rest of this instruction (multi-character check, verbatim draft,
+tradeoff, sensitive content) applies unchanged.
+
+## 6. Sensitive content
 
 Character cards can contain sexual, traumatic, self-harm, or otherwise heavy
 material, including traits that would be destructive "in character" for an

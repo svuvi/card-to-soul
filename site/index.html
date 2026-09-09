@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>card-to-soul — RP characters → SOUL.md</title>
+<style>
+  :root { color-scheme: dark; }
+  body { background: #111; color: #e8e8e8; font: 17px/1.6 system-ui, sans-serif;
+         max-width: 640px; margin: 12vh auto; padding: 0 20px; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  p { color: #aaa; }
+  code { background: #222; padding: 2px 6px; border-radius: 4px; font-size: 15px; }
+  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
+        padding: 14px; white-space: pre-wrap; font-size: 14px; }
+  button { background: #e8e8e8; color: #111; border: 0; border-radius: 8px;
+           font-size: 16px; padding: 10px 22px; cursor: pointer; margin-top: 12px; }
+  button:active { transform: translateY(1px); }
+  #ok { color: #7d7; margin-left: 10px; visibility: hidden; }
+  a { color: #8af; }
+</style>
+</head>
+<body>
+<h1>card-to-soul</h1>
+<p>Turn an RP character card (ChubAI, JanitorAI) into a <code>SOUL.md</code>
+persona for your agent. Near-verbatim transfer — the character's own words
+carry over, not generic summaries. Open source:
+<a href="https://github.com/svuvi/card-to-soul">github.com/svuvi/card-to-soul</a>.</p>
+<p>Paste this into your agent:</p>
+<pre id="prompt">Help me make a new soul.md from an RP character definition — read https://soul.svuvi.ch/instruction.md and tell me what I need to do on my side first.</pre>
+<button id="copy">Copy prompt</button><span id="ok">copied ✓</span>
+<script>
+document.getElementById('copy').onclick = async () => {
+  await navigator.clipboard.writeText(document.getElementById('prompt').innerText);
+  document.getElementById('ok').style.visibility = 'visible';
+  setTimeout(() => document.getElementById('ok').style.visibility = 'hidden', 2000);
+};
+</script>
+</body>
+</html>

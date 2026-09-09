@@ -144,7 +144,7 @@ function cmdProxy(args) {
   const dir = opt("--dir", "./store");
   const ttlH = parseFloat(opt("--ttl-hours", "72"));
   const publicUrl = (opt("--public-url", "") || "").replace(/\/$/, "");
-  const apiKey = opt("--key", process.env.API_KEY || "custom-key");
+  // Any API key and model name are accepted (frontends require the fields).
   fs.mkdirSync(dir, { recursive: true });
 
   // TTL sweep on boot.
@@ -204,8 +204,6 @@ function cmdProxy(args) {
       let raw = "";
       req.on("data", (c) => { raw += c; if (raw.length > 25 * 1024 * 1024) req.destroy(); });
       req.on("end", () => {
-        if (req.headers.authorization !== "Bearer " + apiKey)
-          return send(401, { error: { message: "invalid API key", type: "invalid_request_error" } });
         let body;
         try { body = JSON.parse(raw); } catch (e) { return send(400, { error: "bad JSON" }); }
         if (!Array.isArray(body.messages)) return send(400, { error: "messages[] required" });
@@ -225,7 +223,7 @@ function cmdProxy(args) {
     return send(404, { error: "not found" });
   });
 
-  server.listen(port, () => console.log("proxy on :" + port + " store=" + dir + " ttl=" + ttlH + "h"));
+  server.listen(port, () => console.log("proxy on :" + port + " store=" + dir + " ttl=" + ttlH + "h (any key/model accepted)"));
 }
 
 // Proxy self-test: boot on an ephemeral port, POST a Janitor-style payload,
@@ -326,7 +324,7 @@ else {
   console.log(`card-to-soul — RP character cards -> SOUL.md (zero deps)
 usage:
   node soul.js parse <card.json|card.png> [--out card.json] [--index N]
-  node soul.js proxy [--port 3000] [--dir ./store] [--ttl-hours 72] [--public-url https://host] [--key KEY]
+  node soul.js proxy [--port 3000] [--dir ./store] [--ttl-hours 72] [--public-url https://host]
   node soul.js proxy-self-test
   node soul.js to-soul <card.json> [--out SOUL.md]
 workflow:

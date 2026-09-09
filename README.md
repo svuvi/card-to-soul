@@ -29,7 +29,7 @@ node soul.js to-soul card.json --out SOUL.md
 # Catch a hidden JanitorAI definition
 node soul.js proxy --port 3000 --public-url https://your-host
 # point the character chat at <public-url>/v1/chat/completions as a custom
-# OpenAI endpoint (model mock-model-1, key custom-key), send "hi",
+# OpenAI endpoint (any model name and key, e.g. model `x`, key `x`), send "hi",
 # open the returned /r/<id> link, save it, run to-soul on it.
 ```
 
@@ -38,9 +38,19 @@ multi-character disambiguation, token tradeoff, sensitive content).
 
 ## Layout
 
-- `soul.js` — `parse` | `proxy` | `to-soul` (stdlib only)
+- `soul.js` — `parse` | `proxy` | `to-soul` (Node stdlib only, for one-off runs)
+- `proxy-rs/` — same proxy as a standalone Rust binary (~2.6 MB RAM, for hosting)
 - `SKILL.md` — instructions for agents doing the conversion
+- `site/` — static page + agent instruction file (served at soul.svuvi.ch)
+- `deploy/` — Caddy snippet + systemd unit for the hosted proxy
 - `store/` — proxy captures (gitignored, TTL-expire)
+
+## Hosted proxy
+
+```bash
+cd proxy-rs && cargo build --release
+# runs on :3131 via systemd, see deploy/
+```
 
 ## License
 

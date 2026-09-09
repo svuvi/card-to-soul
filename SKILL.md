@@ -1,3 +1,16 @@
+---
+name: card-to-soul
+description: "Turn RP character cards (ChubAI, JanitorAI) into SOUL.md personas."
+version: 0.1.0
+author: Svuvich
+license: MIT
+platforms: [linux, macos, windows]
+metadata:
+  hermes:
+    tags: [soul, persona, character-card, chubai, janitorai, roleplay]
+    related_skills: []
+---
+
 # card-to-soul agent skill
 
 Turn an RP character card (ChubAI, JanitorAI) into a SOUL.md persona.
@@ -15,8 +28,7 @@ into generic guidelines. The tool does mechanics; judgment is yours.
 ## Per-site fetch instructions
 
 ### ChubAI
-Public cards are exportable, but the site blocks datacenter IPs — do NOT try
-to download the URL yourself, it will fail. Tell the user:
+Tell the user:
 - open the character page in their own browser,
 - use Export / download the card (JSON or the PNG image — both work),
 - send you the file.
@@ -30,11 +42,14 @@ If the definition is visible, the user can paste it. Otherwise use the proxy:
   (local run needs an https tunnel, e.g. `cloudflared tunnel --url http://localhost:3000`;
   the repo can also be hosted so users point JanitorAI at a shared instance),
 - tell the user: open the character chat, switch the API to proxy/custom,
-  endpoint `<base-url>/v1/chat/completions`, model `mock-model-1`,
-  key `custom-key` (or the server's `--key`), save, send one message like "hi",
-- the reply contains a `…/r/<id>` link; ask the user to open it, save the
-  JSON, and send it to you.
+  endpoint `<base-url>/v1/chat/completions`, any model and key (e.g. `x` / `x`),
+  save, send one message like "hi",
+- the reply contains a `…/r/<id>` link; ask the user to paste the link,
+  download the JSON from it yourself, save it, and run `to-soul`.
+  (One less step for the user: they only copy-paste, you do the fetching.)
 Capture files land in `./store/<id>.json` and expire after `--ttl-hours` (72h default).
+Any API key and model name are accepted — tell the user to type whatever,
+e.g. key `x`, model `mock-model-1`.
 
 ## Multi-character cards
 
@@ -50,10 +65,10 @@ Never pick silently.
   context is clear. Keep specifics — name, age, looks, habits, backstory,
   speech patterns, contradictions. A soul full of specifics beats a soul full
   of "be warm / be concise".
-- RP-only material (scene setting, other NPCs' plots, system instructions)
-  does not belong in a soul. Ask the user what to exclude: every kept detail
-  costs tokens in every session. Offer the tradeoff explicitly (full flavor
-  vs lean voice), default to keeping flavor.
+- Scene setting, side plots, and system instructions are RP scaffolding, not
+  soul material by default — but the call is the user's. Explain the tradeoff:
+  every kept paragraph rides along in every session (context bloat, tokens,
+  a more rigid agent). If the user wants the scene in, it goes in.
 - Harness check: after drafting, re-read the soul and verify each paragraph
   traces back to the card. No invented traits.
 

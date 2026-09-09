@@ -47,13 +47,19 @@ ask the user which one they want in SOUL.md. Never pick silently.
 
 ## 4. Drafting SOUL.md
 
-Transfer is near-verbatim: carry the card's text over, do not summarize it
-into generic guidelines ("be warm / be concise" is filler, not persona).
+Get the base draft from the hosted endpoint — POST the normalized `card.json`
+as the request body:
+`curl -X POST https://soul.svuvi.ch/proxy/api/to-soul --data-binary @card.json`
+(local alternative: `card2soul to-soul card.json`). Macros resolved,
+scaffolding stripped. Then adapt by hand: transfer is near-verbatim, do not
+summarize the card into generic guidelines ("be warm / be concise" is filler, not persona).
 Third person; drop the pronoun/subject where the context is clear.
 Keep specifics — name, age, looks, habits, backstory, speech patterns,
 contradictions, side characters. A soul full of specifics beats a soul full
-of advice. Keep the character's own speech sample (first message) as the
-voice reference.
+of advice. Keep the character's spoken lines as the voice reference; drop
+scene narration about other people (`{{user}}` becomes `you`, which mangles
+narration like "you leaned… their hand" — trim to dialogue instead of
+patching pronouns).
 
 Scene setting, side plots, and system instructions are RP scaffolding, not
 soul material by default — but the call is the user's. Explain the tradeoff:

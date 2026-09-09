@@ -169,7 +169,8 @@ function cmdProxy(args) {
       const body = m.content.replace(/<system>[\s\S]*?<\/system>/g, "");
       for (const mt of body.matchAll(/<([^>\/][^>]*)>([\s\S]*?)<\/\1>/g)) {
         const tag = mt[1].trim();
-        if (["scenario", "example_dialogs", "roleplay_guidelines"].includes(tag.toLowerCase())) continue;
+        // JanitorAI wraps the user's persona in <UserPersona> — not a character.
+        if (["scenario", "example_dialogs", "roleplay_guidelines", "userpersona"].includes(tag.toLowerCase())) continue;
         if (mt[2].length > 200 && !names.includes(tag)) names.push(tag);
       }
     }
@@ -212,9 +213,19 @@ function cmdProxy(args) {
         fs.writeFileSync(path.join(dir, id + ".json"), JSON.stringify({ id, at: new Date().toISOString(), characters: chars, body }, null, 1));
         const base = publicUrl || "http://" + (req.headers.host || ("localhost:" + port));
         console.log("captured " + id + " characters=[" + chars.join(", ") + "]");
+        const link = base + "/r/" + id;
+        // JanitorAI sends stream:true and requires an SSE body, otherwise the UI
+        // reports PROXY ERROR even on HTTP 200 with valid JSON.
+        if (body.stream === true) {
+          const created = Math.floor(Date.now() / 1000);
+          const head = { id: "mock-" + id, object: "chat.completion.chunk", created, model: "mock-model-1", choices: [{ index: 0, delta: { role: "assistant", content: "Definition captured: " + link }, finish_reason: null }] };
+          const tail = { id: "mock-" + id, object: "chat.completion.chunk", created, model: "mock-model-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
+          res.writeHead(200, { "content-type": "text/event-stream", "access-control-allow-origin": "*" });
+          return res.end("data: " + JSON.stringify(head) + "\n\ndata: " + JSON.stringify(tail) + "\n\ndata: [DONE]\n\n");
+        }
         return send(200, {
           id: "mock-" + id, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: "mock-model-1",
-          choices: [{ index: 0, message: { role: "assistant", content: "Definition captured: " + base + "/r/" + id }, finish_reason: "stop" }],
+          choices: [{ index: 0, message: { role: "assistant", content: "Definition captured: " + link }, finish_reason: "stop" }],
           usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
         });
       });
@@ -256,9 +267,24 @@ function cmdSelfTest() {
                   assert.deepStrictEqual(got.characters, ["Vivi"]);
                   assert.strictEqual(got.body.messages[1].content, "hi");
                   console.log("PASS proxy round-trip " + link.replace(/:\d+/, ":PORT"));
-                } catch (e) { console.error("FAIL " + e.message); process.exitCode = 1; }
-                child.kill();
-                fs.rmSync(dir, { recursive: true, force: true });
+                  // stream:true must answer SSE or Janitor UI reports PROXY ERROR
+                  const sp = http.request({ port, path: "/v1/chat/completions", method: "POST", headers: { "content-type": "application/json" } },
+                    (r3) => {
+                      let b3 = "";
+                      r3.on("data", (c) => (b3 += c));
+                      r3.on("end", () => {
+                        try {
+                          assert.strictEqual(r3.headers["content-type"], "text/event-stream");
+                          assert.ok(b3.includes("data: [DONE]"));
+                          assert.ok(b3.includes("/r/"));
+                          console.log("PASS proxy sse");
+                        } catch (e) { console.error("FAIL sse " + e.message); process.exitCode = 1; }
+                        child.kill();
+                        fs.rmSync(dir, { recursive: true, force: true });
+                      });
+                    });
+                  sp.end(JSON.stringify({ stream: true, messages: [{ role: "system", content: "<Vivi>" + "x".repeat(300) + "</Vivi>" }] }));
+                } catch (e) { console.error("FAIL " + e.message); process.exitCode = 1; child.kill(); fs.rmSync(dir, { recursive: true, force: true }); }
               });
             });
           });

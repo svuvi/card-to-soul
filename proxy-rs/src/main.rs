@@ -100,6 +100,7 @@ fn characters_of(messages: &Value) -> Vec<String> {
         "scenario",
         "example_dialogs",
         "roleplay_guidelines",
+        "userpersona",
     ];
     let arr = match messages.as_array() {
         Some(a) => a,
@@ -208,6 +209,24 @@ fn json_resp(code: u16, v: &Value) -> tiny_http::Response<std::io::Cursor<Vec<u8
                 tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap(),
             ),
     )
+}
+
+fn sse_capture(id: &str, link: &str) -> String {
+    let created = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let head = json!({
+        "id": format!("mock-{}", id), "object": "chat.completion.chunk",
+        "created": created, "model": "mock-model-1",
+        "choices": [{"index": 0, "delta": {"role": "assistant", "content": format!("Definition captured: {}", link)}, "finish_reason": null}]
+    });
+    let tail = json!({
+        "id": format!("mock-{}", id), "object": "chat.completion.chunk",
+        "created": created, "model": "mock-model-1",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+    });
+    format!("data: {}\n\ndata: {}\n\ndata: [DONE]\n\n", head, tail)
 }
 
 fn serve(cfg: &Config) {
@@ -319,11 +338,26 @@ fn serve(cfg: &Config) {
                 cfg.public_url.clone()
             };
             println!("captured {} characters=[{}]", id, chars.join(", "));
+            let link = format!("{}/r/{}", base, id);
+            // JanitorAI sends stream:true and requires an SSE body, otherwise
+            // the UI reports PROXY ERROR even on HTTP 200 with valid JSON.
+            if body
+                .get("stream")
+                .and_then(|s| s.as_bool())
+                .unwrap_or(false)
+            {
+                let _ = req.respond(cors(
+                    tiny_http::Response::from_string(sse_capture(&id, &link)).with_header(
+                        tiny_http::Header::from_bytes("Content-Type", "text/event-stream").unwrap(),
+                    ),
+                ));
+                continue;
+            }
             let _ = req.respond(json_resp(200, &json!({
                 "id": format!("mock-{}", id), "object": "chat.completion",
                 "created": SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
                 "model": "mock-model-1",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": format!("Definition captured: {}/r/{}", base, id)}, "finish_reason": "stop"}],
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": format!("Definition captured: {}", link)}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             })));
             continue;
@@ -362,6 +396,14 @@ mod tests {
     fn skips_non_character_tags() {
         let msgs = json!([{"role": "system", "content": "<scenario>tiny</scenario>"}]);
         assert!(characters_of(&msgs).is_empty());
+    }
+
+    #[test]
+    fn sse_body_shape() {
+        let b = sse_capture("abc123", "http://x/r/abc123");
+        assert!(b.contains("chat.completion.chunk"));
+        assert!(b.contains("Definition captured: http://x/r/abc123"));
+        assert!(b.trim_end().ends_with("data: [DONE]"));
     }
 
     #[test]
